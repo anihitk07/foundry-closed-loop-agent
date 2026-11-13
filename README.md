@@ -75,6 +75,9 @@ project and **Reader** on the account.
 * Continuous `responseCompleted` evaluation rules don't support **hosted** agents. Use a
   `timerTrigger` rule with a `traceEvaluation` action instead. The project managed identity needs
   Reader + Log Analytics Reader on the App Insights / workspace and **Foundry User** on the project.
+  In this preview, the scheduled runs still finish as `failed` with 0 traces collected (no error text,
+  empty job log). Production feedback still reaches the loop: a Foundry trace data-generation job
+  mines the same traces into the `refund-release-loop-traces` dataset.
 * The optimizer can't see inside a hosted container. Send `baseline_agent_configuration`
   (system prompt, tools, skills) and `agent_optimization_space.target_attributes`.
 * `builtin.tool_call_accuracy` needs tool definitions, which hosted agents don't expose to the
