@@ -1,0 +1,17 @@
+datasets:
+  - name: refund-release-loop-train
+evals:
+  - name: refund-train-eval
+    description: Basic quality evaluation for refund-release-loop
+    dataset: refund-release-loop-train
+    evaluationLevel: turn
+    evaluators:
+      - evaluator: builtin.task_adherence
+        initializationParameters:
+          model: gpt-5.4-mini
+      - evaluator: builtin.task_completion
+        initializationParameters:
+          model: gpt-5.4-mini
+    target:
+      type: agent
+      name: refund-release-loop

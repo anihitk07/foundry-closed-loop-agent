@@ -1,0 +1,76 @@
+name: release-gate
+
+# Every change to the agent (code, instructions, tool descriptions, skills) is deployed
+# as a NEW, UNROUTED Foundry version and compared against production on the held-out
+# release set. The PR fails if the candidate regresses.
+on:
+  pull_request:
+    paths: ["src/**", "release/**", "data/release.jsonl", ".github/workflows/release-gate.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: foundry-release   # one deploy/route operation at a time
+  cancel-in-progress: false
+
+env:
+  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  AGENT_NAME: refund-release-loop
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q azure-identity requests
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install azd + Foundry extensions
+        run: |
+          curl -fsSL https://aka.ms/install-azd.sh | bash
+          azd auth login --client-id "${{ vars.AZURE_CLIENT_ID }}" --federated-credential-provider github --tenant-id "${{ vars.AZURE_TENANT_ID }}"
+          azd extension install azure.ai.agents azure.ai.evaluations --no-prompt || azd extension install azure.ai.agents azure.ai.evaluations
+
+      - name: Bind azd env to the existing Foundry project
+        run: |
+          azd env new closedloop --subscription "${{ vars.AZURE_SUBSCRIPTION_ID }}" --location "${{ vars.AZURE_LOCATION }}" --no-prompt
+          azd env set AZURE_TENANT_ID "${{ vars.AZURE_TENANT_ID }}"
+          azd env set AZURE_RESOURCE_GROUP "${{ vars.AZURE_RESOURCE_GROUP }}"
+          azd env set AZURE_AI_ACCOUNT_NAME "${{ vars.AZURE_AI_ACCOUNT_NAME }}"
+          azd env set AZURE_AI_PROJECT_NAME "${{ vars.AZURE_AI_PROJECT_NAME }}"
+          azd env set AZURE_AI_PROJECT_ID "/subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.AZURE_RESOURCE_GROUP }}/providers/Microsoft.CognitiveServices/accounts/${{ vars.AZURE_AI_ACCOUNT_NAME }}/projects/${{ vars.AZURE_AI_PROJECT_NAME }}"
+          azd env set FOUNDRY_PROJECT_ENDPOINT "$FOUNDRY_PROJECT_ENDPOINT"
+          azd env set AZURE_AI_PROJECT_CONNECTIONS_PROJECT_ENDPOINT "$FOUNDRY_PROJECT_ENDPOINT"
+          azd env set AZURE_OPENAI_ENDPOINT "https://${{ vars.AZURE_AI_ACCOUNT_NAME }}.openai.azure.com/"
+          azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME gpt-5.4-mini
+          azd env set USE_EXISTING_AI_PROJECT true
+          azd env set ENABLE_HOSTED_AGENTS true
+          azd env set ENABLE_CAPABILITY_HOST false
+          azd env set AZD_AGENT_SKIP_ACR true
+          azd env set AZD_FOUNDRY_ACR_MODE none
+
+      - name: Pin production (new deploys must not auto-route)
+        id: prep
+        run: python release/release_gate.py prepare
+
+      - name: Deploy candidate as a new agent version
+        run: azd deploy refund-release-loop --no-prompt
+
+      - name: Compare prod vs candidate on held-out release set
+        run: python release/release_gate.py compare "${{ steps.prep.outputs.prod_version }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: gate-report, path: release/gate-report.json, if-no-files-found: ignore }

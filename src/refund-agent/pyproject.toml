@@ -1,0 +1,11 @@
+[project]
+name = "refund-agent"
+version = "0.1.0"
+description = "Contoso refund agent - closed-loop evaluation demo (Foundry hosted agent, Responses protocol)."
+requires-python = ">=3.12"
+dependencies = [
+    "azure-ai-agentserver-optimization==1.0.0b1",
+    "azure-ai-agentserver-responses==2.4.0",
+    "azure-ai-projects==2.11.0",
+    "azure-identity>=1.25.0",
+]

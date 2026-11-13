@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.azure/
+.env
+release/gate-report.json
+release/traffic-*.json
+evalrun_*.json
+*.log
