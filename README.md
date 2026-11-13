@@ -28,19 +28,25 @@ the loop from the weak baseline, restore `instructions.md` from commit `2bfb5d9`
 **Docs:** [How it works, step by step](docs/HOW-IT-WORKS.md) · [End-to-end runbook](docs/RUNBOOK.md) ·
 [diagrams](docs/diagrams/)
 
-```
- production traffic ──► traces (App Insights) ──► hourly trace-eval rule (monitor.py)
-        ▲                                  │
-        │                                  ▼
- promote / rollback            trace-mined + curated datasets (register_datasets.py)
- (pin endpoint)                            │
-        ▲                                  ▼
- canary via version_indicator   eval config (evals/azure.eval.yaml) ─► baseline run
- sessions (canary.py)                      │
-        ▲                                  ▼
- CI release gate  ◄── PR ◄── apply  ◄── Agent Optimizer (optimize.py) → draft candidates
- prod vs candidate on held-out release set (release_gate.py + refund_checks.py)
-```
+![Closed-loop agent release on Microsoft Foundry: production, observability, evaluation, optimization and release, connected in nine numbered steps](docs/diagrams/components.png)
+
+### How the loop runs
+
+**Part 1: evaluate and optimize.** Production traces feed online trace evaluation and dataset mining; the offline baseline run feeds the Agent Optimizer.
+
+![Sequence, part 1: production traffic, online trace evaluation, dataset mining, offline evaluation and optimizer cycles](docs/diagrams/sequence-1-evaluate-optimize.png)
+
+**Part 2: release.** A PR triggers the CI gate (unrouted candidate vs production), then canary and promote run in the `production` environment.
+
+![Sequence, part 2: PR, CI release gate, canary and promote](docs/diagrams/sequence-2-release.png)
+
+Mermaid source: [`docs/diagrams/sequence.mmd`](docs/diagrams/sequence.mmd) · draw.io source: [`docs/diagrams/components.drawio`](docs/diagrams/components.drawio)
+
+### Proof from the reference run
+
+| The optimizer commit failed the gate; the review fix passed | Release-gate run passing, gate report attached |
+|---|---|
+| ![PR #1 merged](docs/images/pr1-merged.png) | ![release-gate run passing](docs/images/gate-pass-run.png) |
 
 ## Versions and routing
 
