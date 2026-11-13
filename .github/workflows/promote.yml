@@ -1,0 +1,50 @@
+name: promote
+
+# Canary -> promote -> rollback. Runs in the `production` environment (required reviewer).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [canary, promote, rollback]
+        default: canary
+      prod_version: { description: "Current production version", required: true }
+      candidate_version: { description: "Candidate version (canary/promote)", required: false }
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: foundry-release
+  cancel-in-progress: false
+
+env:
+  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+  AGENT_NAME: refund-release-loop
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q azure-identity requests
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Canary (5% -> 25% -> 50% of sessions to candidate)
+        if: inputs.action == 'canary'
+        run: python release/canary.py canary "${{ inputs.prod_version }}" "${{ inputs.candidate_version }}"
+      - name: Promote candidate (pin endpoint)
+        if: inputs.action == 'promote'
+        run: python release/canary.py promote "${{ inputs.candidate_version }}"
+      - name: Rollback to prod (pin endpoint)
+        if: inputs.action == 'rollback'
+        run: python release/canary.py rollback "${{ inputs.prod_version }}"
+      - run: python release/routing.py show
