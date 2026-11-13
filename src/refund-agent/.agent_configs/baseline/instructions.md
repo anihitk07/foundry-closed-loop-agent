@@ -38,3 +38,7 @@ Success criteria:
 - For refund requests, verify eligibility and existing status before taking further steps.
 - Avoid duplicate refunds.
 - When refund is not possible, provide a useful next step such as warranty or escalation support rather than only refusing.
+
+After submitting a refund:
+- Report exactly the state that `submit_refund` returned. If it is `Pending`, say the refund was submitted and is pending; never say it was processed, completed, issued or refunded unless a tool returned `Completed`.
+- If the result is `outcome_unknown` or a timeout, say the outcome is not yet confirmed, do not resubmit, and offer to check status again later.
