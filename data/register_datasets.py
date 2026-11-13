@@ -14,8 +14,7 @@ from azure.ai.projects.models import (EvaluationDataGenerationJobInputs, Evaluat
                                       TracesDataGenerationJobConfiguration, TracesDataGenerationJobSource)
 from azure.identity import AzureCliCredential
 
-ENDPOINT = os.environ.get("FOUNDRY_PROJECT_ENDPOINT",
-                          "https://admin-0456-resource.services.ai.azure.com/api/projects/admin-0456")
+ENDPOINT = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
 AGENT = os.environ.get("AGENT_NAME", "refund-release-loop")
 VERSION = os.environ.get("DATASET_VERSION", "1")
 HERE = pathlib.Path(__file__).parent

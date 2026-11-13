@@ -4,7 +4,7 @@ This repo implements the Foundry blog post
 [Improve production agents with closed-loop evaluations in Microsoft Foundry](https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/improve-production-agents-with-closed-loop-evaluations-in-microsoft-foundry/4569762).
 This document walks through each step in the order it runs. For each step, it says what triggers
 the step, which code or API runs, the inputs and outputs, and how to inspect the result. The numbers
-come from the real run against Foundry project `admin-0456` (account `admin-0456-resource`, Sweden Central).
+come from the real run against a Foundry project in Sweden Central.
 
 A sequence diagram is in [`diagrams/sequence.png`](diagrams/sequence.png).
 
@@ -59,10 +59,10 @@ Where the original mental model is wrong:
 | # | Step | Trigger | Component | Output |
 |---|---|---|---|---|
 | 1 | Trace capture | automatic (every request) | Hosted-agent runtime + project App Insights connection | `invoke_agent refund-release-loop:N` spans in App Insights |
-| 2 | Online trace evaluation | schedule (`0 * * * *` UTC), created once by a command (`release/monitor.py`) | Foundry evaluation rule `refund-release-loop-trace-eval` | Eval runs on eval `eval_6058407b...` (preview: `failed`, 0 traces) |
+| 2 | Online trace evaluation | schedule (`0 * * * *` UTC), created once by a command (`release/monitor.py`) | Foundry evaluation rule `refund-release-loop-trace-eval` | Eval runs on eval `eval_<id>` (preview: `failed`, 0 traces) |
 | 3 | Dataset mining | command (`data/make_datasets.py`, `data/register_datasets.py [--from-traces]`) | Foundry datasets + trace data-generation job | `refund-release-loop-{train,validation,release}` v1, `refund-release-loop-traces` v1.0 (30 samples) |
 | 4 | Offline evaluation | command (`azd ai eval run start`) | `evals/azure.eval.yaml` -> eval `refund-train-eval` | Run `baseline-v1`: 4/6 passed |
-| 5 | Optimizer | command (`release/optimize.py submit`); search is automatic | Foundry Agent Optimizer job | `opt_cf7fd22a...`: scored candidates + draft versions |
+| 5 | Optimizer | command (`release/optimize.py submit`); search is automatic | Foundry Agent Optimizer job | `opt_<id>`: scored candidates + draft versions |
 | 6 | Candidate -> PR | manual | git + `gh pr create` | PR #1 (`optimize/candidate-1`) |
 | 7 | CI release gate | PR event (path filter) or `workflow_dispatch` | `.github/workflows/release-gate.yml` + `release/release_gate.py` | New unrouted version, `gate-report` artifact, pass/fail check |
 | 8 | Canary | manual `workflow_dispatch` (`action=canary`) | `.github/workflows/promote.yml` + `release/canary.py` | HOLD / ABORT per stage |
@@ -89,7 +89,7 @@ Where the original mental model is wrong:
 | Trigger | Run `python release/monitor.py` once. After that, Foundry runs it on a **timer** every hour (`CronTrigger("0 * * * *")`, UTC). |
 | Why a timer | Continuous `responseCompleted` rules don't support hosted agents. Instead, `monitor.py` creates an `EvaluationRule` with `event_type=TIMER_TRIGGER` and a `TraceEvaluationRuleAction`. |
 | Inside | `monitor.py` first gets or creates the eval `refund-release-loop-production-traces` with `oai.evals.create(data_source_config={"type":"azure_ai_source","scenario":"traces"})`. Its judges are `builtin.task_adherence`, `builtin.tool_call_accuracy` and `builtin.intent_resolution`, all on `gpt-5.4-mini`. It then calls `project.evaluation_rules.create_or_update(id="refund-release-loop-trace-eval", ...)`. The data source is `TracesEvalRunDataSource(agent_name, lookback_hours=1, max_traces=50)`. `--run-now` also calls `oai.evals.runs.create(...)` with `data_source.type="azure_ai_traces"` and `lookback_hours=2`. |
-| Live rule | Source `azure_ai_traces`, `agent_name=refund-release-loop`, `lookback_hours=1`, `max_traces=50`, `ingestion_delay_seconds=300`. The 300-second delay is a service default shown on the live rule; `monitor.py` doesn't set it. Eval id: `eval_6058407b67e74c6a83c8fb6b3c7b7c25`. |
+| Live rule | Source `azure_ai_traces`, `agent_name=refund-release-loop`, `lookback_hours=1`, `max_traces=50`, `ingestion_delay_seconds=300`. The 300-second delay is a service default shown on the live rule; `monitor.py` doesn't set it. Eval id: `eval_<id>`. |
 | Permissions | The project managed identity needs **Reader** and **Log Analytics Reader** on App Insights and the workspace, plus **Foundry User** on the project. |
 | Outputs | One eval run per hour under the eval above. |
 | Inspect | Foundry portal > Evaluations > `refund-release-loop-production-traces`, or `oai.evals.runs.list(eval_id=...)`. |
@@ -105,7 +105,7 @@ Where the original mental model is wrong:
 | Trace mining | `--from-traces` calls `project.datasets.begin_create_generation_job(EvaluationDataGenerationJobInputs(...))`, sending the header `Foundry-Features: DataGenerationJobs=V1Preview`. Its parts: **Source:** `TracesDataGenerationJobSource(agent_name="refund-release-loop", agent_version="1", start_time=now-6h)`. **Config:** `TracesDataGenerationJobConfiguration(max_samples=30, redact_private_content=True)`. **Output:** `EvaluationDataGenerationJobOutputConfiguration(name="refund-release-loop-traces")`. The script then blocks on `poller.result()`. |
 | Outputs | Datasets `refund-release-loop-train`, `-validation` and `-release` (v1), plus `refund-release-loop-traces` v1.0. |
 | Inspect | Foundry portal > Data > Datasets, or `project.datasets.list()`. Job status: Foundry MCP `data_generation_job_get` or the portal. |
-| This run | Job `datagen-7099c22949004e5ba6664cdd96f9bbd4` mined **30 samples** from v1 production traces into `refund-release-loop-traces` v1.0. |
+| This run | Job `datagen-<id>` mined **30 samples** from v1 production traces into `refund-release-loop-traces` v1.0. |
 | Gap | `optimize.py` (`_ds()`) and `evals/azure.eval.yaml` only reference the **curated** `train` and `validation` datasets. The trace-mined dataset is produced but nothing in the loop uses it yet. The docstring in `make_datasets.py` says that in production these rows would come from traces plus human-labelled `ground_truth`. The trace source is also hard-coded to `agent_version="1"` with a 6-hour lookback. |
 
 ## 4. Offline evaluation run (baseline)
@@ -129,7 +129,7 @@ Where the original mental model is wrong:
 | Inside | `submit()` builds an `AgentOptimizationJob` and calls `project.agents.begin_create_optimization_job(job)`. Key fields: **`target_configuration`:** `{type: foundry_agent, name, version: base_version}`. **`optimization_model_configuration.model`:** `gpt-5.4`, which proposes the mutations. **`evaluation_configuration`:** training set `refund-release-loop-train` v1, validation set `refund-release-loop-validation` v1 (`type: target_completion`, `dataset_reference`), the same two judges as `azure.eval.yaml`, and judge model `gpt-5.4-mini`. The judges are repeated in code; the YAML file isn't read. **`candidate_search_configuration.max_candidates`:** 2. **`baseline_agent_configuration`:** built by `baseline_config()`, which reads `instructions.md`, `tools.json` and every `skills/*/SKILL.md`. This is needed because the optimizer can't see inside a hosted container. **`agent_optimization_space.target_attributes`:** `["instructions","tools","skills"]`. |
 | What the service does | It mutates the editable surface (instructions, tool descriptions, skills), evaluates each candidate on train and validation with the judges, scores it against the baseline and creates a **draft** agent version for each candidate. Nothing is routed. |
 | Inspect | `optimize.py status <job>` (`get_optimization_job`) and `optimize.py candidates <job>` (`list_optimization_candidates`). Other SDK calls, used by hand and not wrapped in the repo: `get_optimization_candidate` (its `output.mutations[].value` holds the new instructions), `download_optimization_job_file` and `promote_optimization_candidate`. |
-| This run | Job `opt_cf7fd22a643844b1bf97b71ac9b143be`. **baseline 0.829**. **candidate_1 0.9125** changed instructions only; draft version `draft-1794580369606`. **candidate_2 0.867** changed instructions and tools. |
+| This run | Job `opt_<id>`. **baseline 0.829**. **candidate_1 0.9125** changed instructions only; draft version `draft-<n>`. **candidate_2 0.867** changed instructions and tools. |
 
 ## 6. Candidate -> PR
 
@@ -146,7 +146,7 @@ Where the original mental model is wrong:
 | | |
 |---|---|
 | Trigger | `pull_request` that touches `src/**`, `release/**`, `data/release.jsonl` or the workflow file, or `workflow_dispatch`. `concurrency: foundry-release` serializes it with `promote.yml`. |
-| Auth | GitHub OIDC (`azure/login@v2`, then `azd auth login --federated-credential-provider github`) signs in as Entra app `gh-foundry-closed-loop-agent`. The app has **Foundry User** on the project and **Reader** on the account. Its federated-credential subjects use GitHub's immutable-ID form: `repo:anihitk07@4090037/foundry-closed-loop-agent@1456702956:{pull_request \| ref:refs/heads/main \| environment:production}`. |
+| Auth | GitHub OIDC (`azure/login@v2`, then `azd auth login --federated-credential-provider github`) signs in as Entra app `gh-foundry-closed-loop-agent`. The app has **Foundry User** on the project and **Reader** on the account. Its federated-credential subjects use GitHub's immutable-ID form: `repo:<owner>@<ownerId>/<repo>@<repoId>:{pull_request \| ref:refs/heads/main \| environment:production}`. |
 | Steps | 1. Install azd and the `azure.ai.agents` / `azure.ai.evaluations` extensions, then bind an azd env to the existing project. 2. `release_gate.py prepare`: `routing.routed_version()` finds the production version and `routing.pin(prod)` pins it, so the new deploy can't auto-route to `latest`. 3. `azd deploy refund-release-loop` creates candidate version N from the PR head. **N is unrouted.** 4. `release_gate.py compare <prod>`: gets `latest`, runs `routing.wait_active(N)`, then `suite.run(prod, release_rows, REPEAT)` and `suite.run(N, ...)`. 5. Writes the step summary and uploads `release/gate-report.json` as the `gate-report` artifact. |
 | `suite.run` | Creates a **version-pinned session** (`routing.create_session` posts `version_indicator: {type: version_ref, agent_version}`) and invokes `/endpoint/protocols/openai/responses` with that `agent_session_id`. Each turn's output items are scored by `refund_checks.check()`: **`repeated_submission`:** more than one `submit_refund`, or any submit when a refund already exists. **`unverified_claim`:** a regex match for a completion claim (with negation handling) while the replayed state isn't `completed`. **`claim_state_mismatch`:** a refund amount above the order total, or the text contains "9999". It also records latency and tokens. No LLM is involved. |
 | Thresholds | Set by env vars `GATE_MIN_PASS_RATE`, `GATE_MAX_LATENCY_RATIO` and `GATE_REPEAT` (default 2, so 6 rows x 2 = 12 turns per version). All of these must hold: candidate pass rate >= **0.9**; candidate pass rate >= prod; 0 infra errors; candidate p50 latency <= **1.5x** prod. Token count is reported but not gated. |

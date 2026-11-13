@@ -12,8 +12,7 @@ from azure.ai.projects.models import (CronTrigger, EvaluationRule, EvaluationRul
                                       TraceEvaluationRuleAction, TracesEvalRunDataSource)
 from azure.identity import AzureCliCredential
 
-ENDPOINT = os.environ.get("FOUNDRY_PROJECT_ENDPOINT",
-                          "https://admin-0456-resource.services.ai.azure.com/api/projects/admin-0456")
+ENDPOINT = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
 AGENT = os.environ.get("AGENT_NAME", "refund-release-loop")
 JUDGE = os.environ.get("JUDGE_MODEL", "gpt-5.4-mini")
 SCENARIO = os.environ.get("EVAL_SCENARIO", "traces")

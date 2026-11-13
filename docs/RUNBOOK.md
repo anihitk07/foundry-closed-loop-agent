@@ -4,9 +4,8 @@ This runbook reproduces **evaluate → optimize → gate → canary → promote*
 subscription and GitHub repo. Every command is PowerShell, run from the repo root unless noted.
 
 Placeholders: `<sub-id>`, `<tenant-id>`, `<rg>` (the RG that holds the Foundry account),
-`<account>`, `<project>`, `<owner>/<repo>`. Where a real value is shown, it is from the reference run:
-account `admin-0456-resource`, project `admin-0456`, RG `rg-admin-0456`, Sweden Central,
-observability RG `rg-closed-loop-agent`, repo `anihitk07/foundry-closed-loop-agent`.
+`<account>`, `<project>`, `<owner>/<repo>`. Expected outputs are from the reference run
+(Sweden Central, observability RG `rg-closed-loop-agent`).
 
 | step | what | where |
 |---|---|---|
@@ -58,9 +57,9 @@ Isolate config per tenant so a stray login never deploys to the wrong tenant:
 $env:AZURE_CONFIG_DIR = "$env:USERPROFILE\.azure-tenants\<tenant-alias>"
 $env:AZD_CONFIG_DIR   = "$env:USERPROFILE\.azd-tenants\<tenant-alias>"
 $SUB = "<sub-id>"; $TENANT = "<tenant-id>"; $LOC = "swedencentral"
-$RG = "<rg>"; $ACCOUNT = "<account>"; $PROJECT = "<project>"        # e.g. rg-admin-0456 / admin-0456-resource / admin-0456
+$RG = "<rg>"; $ACCOUNT = "<account>"; $PROJECT = "<project>"
 $OBS_RG = "rg-closed-loop-agent"; $LAW = "log-closed-loop"; $APPI = "appi-closed-loop"
-$REPO = "<owner>/<repo>"                                             # e.g. anihitk07/foundry-closed-loop-agent
+$REPO = "<owner>/<repo>"
 $ACCOUNT_ID = "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$ACCOUNT"
 $PROJECT_ID = "$ACCOUNT_ID/projects/$PROJECT"
 $env:FOUNDRY_PROJECT_ENDPOINT = "https://$ACCOUNT.services.ai.azure.com/api/projects/$PROJECT"
@@ -74,8 +73,8 @@ function Assert-Tenant {
 }
 ```
 
-> ⚠️ All scripts in `release/` and `data/` default to the reference project (`admin-0456`) when
-> `FOUNDRY_PROJECT_ENDPOINT` is unset. Always run the preamble.
+> ⚠️ All scripts in `release/` and `data/`, and `azure.yaml`, read `FOUNDRY_PROJECT_ENDPOINT`.
+> Always run the preamble.
 
 First login (once per tenant alias):
 
@@ -113,15 +112,15 @@ Alternative (standalone repo, no fork link):
 
 ### 1.2 Point the repo at your project
 
-`azure.yaml` hard-codes the reference project endpoint. Replace it:
+`azure.yaml` reads the project from `${FOUNDRY_PROJECT_ENDPOINT}`. Store it in the azd environment:
 
 ```powershell
-(Get-Content azure.yaml -Raw) -replace 'https://admin-0456-resource\.services\.ai\.azure\.com/api/projects/admin-0456', $env:FOUNDRY_PROJECT_ENDPOINT |
-  Set-Content azure.yaml -NoNewline
-Select-String -Path azure.yaml -Pattern 'endpoint:'
+azd env new <env-name>
+azd env set FOUNDRY_PROJECT_ENDPOINT $env:FOUNDRY_PROJECT_ENDPOINT
+azd env get-value FOUNDRY_PROJECT_ENDPOINT
 ```
 
-Expected: `endpoint: https://<account>.services.ai.azure.com/api/projects/<project>`.
+Expected: `https://<account>.services.ai.azure.com/api/projects/<project>`.
 
 ### 1.3 Reset to the weak baseline (to reproduce the loop)
 
@@ -494,7 +493,7 @@ The old `repo:<owner>/<repo>:...` form fails with **AADSTS700213**.
 Assert-Tenant
 $OWNER, $NAME = $REPO.Split('/')
 $ids = gh api "repos/$REPO" --jq '.owner.id,.id'; $OWNER_ID = $ids[0]; $REPO_ID = $ids[1]
-$PREFIX = "repo:$OWNER@$OWNER_ID/$NAME@$REPO_ID"          # e.g. repo:anihitk07@4090037/foundry-closed-loop-agent@1456702956
+$PREFIX = "repo:$OWNER@$OWNER_ID/$NAME@$REPO_ID"          # e.g. repo:contoso@1234567/foundry-closed-loop-agent@987654321
 
 $APP_ID = az ad app create --display-name "gh-$NAME" --query appId -o tsv
 az ad sp create --id $APP_ID -o none
@@ -779,8 +778,8 @@ Verify: `az group exists -n $OBS_RG` → `false`; `az ad app show --id $APP_ID` 
 | `azd ai eval run start`: eval not found | eval not deployed | `azd ai eval create refund-train-eval` (re-running creates a **new** eval id) |
 | `azd ai agent optimize`: *agent_optimization_space is required* / *registered datasets require name+version* | CLI path doesn't send hosted-agent config | Use `python release/optimize.py submit` |
 | Optimizer: *no_optimizable_target* | baseline config not sent | `optimize.py` sends it from `.agent_configs/baseline` + `skills/`; keep those files present and in sync with the deployed version |
-| Scripts act on `admin-0456` / 401 on someone else's project | `FOUNDRY_PROJECT_ENDPOINT` unset (scripts default to the reference project) | Run the session preamble |
-| `azd deploy` targets the wrong project | `azure.yaml` `ai-project.endpoint` still the reference value | Step 1.2 |
+| Scripts fail with `KeyError: 'FOUNDRY_PROJECT_ENDPOINT'` | env var unset | Run the session preamble |
+| `azd deploy` targets the wrong project / endpoint mismatch | azd env `FOUNDRY_PROJECT_ENDPOINT` missing or stale | Step 1.2 |
 | `401`/`403` from `routing.py`, `suite.py`, evals | missing Foundry User on the project, or logged in to another tenant | Step 2.4 / 9.2; check `AZURE_CONFIG_DIR` and `Assert-Tenant` |
 | CI `azd deploy` denied | SP lacks a data-plane write permission in your tenant | Confirm Foundry User on the **project** scope; if still denied add *Azure AI Developer* on the project |
 | `version N failed` / `TimeoutError` in `wait-active` | container failed to start (e.g. missing env, bad deps) | `azd ai agent monitor` for logs; fix and redeploy (new version) |

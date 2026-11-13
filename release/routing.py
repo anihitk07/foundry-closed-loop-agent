@@ -14,8 +14,7 @@ import time
 import requests
 from azure.identity import AzureCliCredential, AzureDeveloperCliCredential, ChainedTokenCredential, DefaultAzureCredential
 
-ENDPOINT = os.environ.get("FOUNDRY_PROJECT_ENDPOINT",
-                          "https://admin-0456-resource.services.ai.azure.com/api/projects/admin-0456").rstrip("/")
+ENDPOINT = os.environ["FOUNDRY_PROJECT_ENDPOINT"].rstrip("/")
 AGENT = os.environ.get("AGENT_NAME", "refund-release-loop")
 _cred = ChainedTokenCredential(AzureCliCredential(), AzureDeveloperCliCredential(), DefaultAzureCredential())
 

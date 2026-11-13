@@ -9,7 +9,7 @@ requiredVersions:
         azure.ai.agents: '>=1.0.0-beta.9'
 services:
     ai-project:
-        endpoint: https://admin-0456-resource.services.ai.azure.com/api/projects/admin-0456
+        endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
         host: azure.ai.project
     refund-release-loop:
         codeConfiguration:
