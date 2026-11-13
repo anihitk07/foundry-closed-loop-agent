@@ -21,6 +21,8 @@ from refund_checks import check  # noqa: E402
 def run(target: str, rows: list[dict], repeat: int = 1) -> dict:
     results = []
     sid = None if target == "endpoint" else routing.create_session(target)
+    # response agent_reference echoes the endpoint's routed version, not the session's bound one
+    bound = routing.session_version(sid) if sid else None
     try:
         for _ in range(repeat):
             for row in rows:
@@ -32,7 +34,7 @@ def run(target: str, rows: list[dict], repeat: int = 1) -> dict:
                                 if i.get("agent_reference")), None)
                     results.append({"name": row["name"], **c, "latency_s": r["_latency_s"],
                                     "tokens": (u.get("input_tokens") or 0) + (u.get("output_tokens") or 0),
-                                    "served_by": ver})
+                                    "served_by": bound or ver})
                 except Exception as e:  # count infra failures as failures
                     results.append({"name": row["name"], "passed": False, "error": str(e)[:300]})
     finally:

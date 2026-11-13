@@ -72,6 +72,11 @@ def create_session(version: str) -> str:
     return _req("POST", f"/agents/{AGENT}/endpoint/sessions", body)["agent_session_id"]
 
 
+def session_version(session_id: str) -> str:
+    s = _req("GET", f"/agents/{AGENT}/endpoint/sessions/{session_id}")
+    return (s.get("version_indicator") or {}).get("agent_version")
+
+
 def stop_session(session_id: str):
     try:
         _req("POST", f"/agents/{AGENT}/endpoint/sessions/{session_id}:stop", {}, ok=(200, 202, 204))

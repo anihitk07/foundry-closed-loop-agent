@@ -79,3 +79,8 @@ project and **Reader** on the account.
   (system prompt, tools, skills) and `agent_optimization_space.target_attributes`.
 * `builtin.tool_call_accuracy` needs tool definitions, which hosted agents don't expose to the
   evaluator. The gate uses deterministic `refund_checks.py` for tool-state correctness.
+* A response's `agent_reference.version` echoes the **endpoint's routed** version, even inside a
+  session pinned to another version. Traces (`invoke_agent refund-release-loop:N`) and the session's
+  `version_indicator` show the version that actually served the request, so `suite.py` reports the latter.
+* GitHub now issues immutable-ID OIDC subjects (`repo:owner@<id>/repo@<id>:...`). Federated
+  credentials must match that form.
