@@ -8,7 +8,11 @@ tools (`lookup_order`, `get_refund_status`, `submit_refund`) and ships with deli
 weak instructions. Production failures (for example, re-submitting a refund that is
 already *pending*) are caught by evaluation and fixed by the Foundry Agent Optimizer. Each
 fix is then released through an eval-gated GitHub Actions pipeline, with version-pinned
-canary and one-command promote or rollback.
+canary and one-command promote or rollback. `main` now holds the promoted v4 instructions. To replay
+the loop from the weak baseline, restore `instructions.md` from commit `2bfb5d9`.
+
+**Docs:** [How it works, step by step](docs/HOW-IT-WORKS.md) · [End-to-end runbook](docs/RUNBOOK.md) ·
+[diagrams](docs/diagrams/)
 
 ```
  production traffic ──► traces (App Insights) ──► hourly trace-eval rule (monitor.py)
@@ -59,6 +63,7 @@ azd deploy refund-release-loop
 python release/routing.py pin 1
 python release/monitor.py --run-now
 python data/register_datasets.py --from-traces
+azd ai eval create refund-train-eval                       # once (needs azure.ai.evaluations extension)
 azd ai eval run start --eval refund-train-eval --name baseline --wait
 python release/optimize.py submit --base-version 1
 python release/optimize.py candidates <job-id>          # then apply the winner to .agent_configs and open a PR
